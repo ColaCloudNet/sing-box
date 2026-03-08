@@ -29,3 +29,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 In addition, no derivative work may use the name or imply association
 with this application without prior consent.
 ```
+## ColaCloudNet notes
+
+This fork adds [mieru](https://github.com/enfein/mieru) inbound/outbound support
+on top of upstream sing-box. See `docs/configuration/inbound/mieru.md` and
+`docs/configuration/outbound/mieru.md`.
