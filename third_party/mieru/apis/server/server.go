@@ -77,6 +77,20 @@ func (ms *mieruServer) Store(config *ServerConfig) error {
 	return nil
 }
 
+func (ms *mieruServer) UpdateUsers(users []*appctlpb.User) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if !ms.running.Load() || ms.mux == nil {
+		return ErrServerIsNotRunning
+	}
+	if ms.config == nil || ms.config.Config == nil {
+		return ErrNoServerConfig
+	}
+	ms.config.Config.Users = users
+	ms.mux.SetServerUsers(appctlcommon.UserListToMap(users))
+	return nil
+}
+
 func (ms *mieruServer) Start() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
