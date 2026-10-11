@@ -50,6 +50,11 @@ type ServerConfigurationService interface {
 	// It returns ErrStoreServerConfigAfterStart error
 	// if it is called after start.
 	Store(*ServerConfig) error
+
+	// UpdateUsers atomically replaces the authenticated user set while the
+	// server is running. Listeners and underlays are left untouched.
+	// It returns ErrServerIsNotRunning if Start has not been called.
+	UpdateUsers(users []*appctlpb.User) error
 }
 
 // ServerLifecycleService contains methods to manage proxy server lifecycle.
