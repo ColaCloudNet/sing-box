@@ -199,3 +199,6 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
+
+// ColaCloudNet: server underlay idle reclaim (enfein/mieru#317)
+replace github.com/enfein/mieru/v3 => ./third_party/mieru
