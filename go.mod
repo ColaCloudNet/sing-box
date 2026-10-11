@@ -167,3 +167,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
+
+// ColaCloudNet: server underlay idle reclaim (enfein/mieru#317)
+replace github.com/enfein/mieru/v3 => ./third_party/mieru
