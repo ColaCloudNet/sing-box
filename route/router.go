@@ -247,6 +247,10 @@ func (r *Router) NeedFindProcess() bool {
 func (r *Router) UpdateRules(rules []option.Rule, ruleSets []option.RuleSet) error {
 	newRules := make([]adapter.Rule, 0, len(rules))
 	for i, options := range rules {
+		err := R.ValidateNoNestedRuleActions(options)
+		if err != nil {
+			return E.Cause(err, "parse rule[", i, "]")
+		}
 		rule, err := R.NewRule(r.ctx, r.logger, options, false)
 		if err != nil {
 			return E.Cause(err, "parse rule[", i, "]")
@@ -257,26 +261,31 @@ func (r *Router) UpdateRules(rules []option.Rule, ruleSets []option.RuleSet) err
 	newRuleSets := make([]adapter.RuleSet, 0, len(ruleSets))
 	newRuleSetMap := make(map[string]adapter.RuleSet)
 	for i, options := range ruleSets {
-		if _, exists := newRuleSetMap[options.Tag]; exists {
-			return E.New("duplicate rule-set tag: ", options.Tag)
+		for _, tag := range options.Tag {
+			if _, exists := newRuleSetMap[tag]; exists {
+				return E.New("duplicate rule-set tag: ", tag)
+			}
+			ruleSet, err := R.NewRuleSet(r.ctx, r.logger, tag, options)
+			if err != nil {
+				return E.Cause(err, "parse rule-set[", i, "]")
+			}
+			newRuleSets = append(newRuleSets, ruleSet)
+			newRuleSetMap[tag] = ruleSet
 		}
-		ruleSet, err := R.NewRuleSet(r.ctx, r.logger, options)
-		if err != nil {
-			return E.Cause(err, "parse rule-set[", i, "]")
-		}
-		newRuleSets = append(newRuleSets, ruleSet)
-		newRuleSetMap[options.Tag] = ruleSet
 	}
 
-	if r.started {
-		var cacheContext *adapter.HTTPStartContext
+	// Xboard-Node calls UpdateRules on a running instance. Mirror StartStateStart
+	// + StartStatePostStart initialization, then swap and close the old set.
+	started := r.ruleSetUpdater != nil || len(r.rules) > 0 || len(r.ruleSets) > 0
+	if started {
+		var startContext *adapter.HTTPStartContext
 		if len(newRuleSets) > 0 {
-			cacheContext = adapter.NewHTTPStartContext(r.ctx)
+			startContext = adapter.NewHTTPStartContext()
 			var ruleSetStartGroup task.Group
 			for i, ruleSet := range newRuleSets {
 				ruleSetInPlace := ruleSet
 				ruleSetStartGroup.Append0(func(ctx context.Context) error {
-					err := ruleSetInPlace.StartContext(ctx, cacheContext)
+					err := ruleSetInPlace.StartContext(ctx, startContext)
 					if err != nil {
 						return E.Cause(err, "initialize rule-set[", i, "]")
 					}
@@ -290,8 +299,8 @@ func (r *Router) UpdateRules(rules []option.Rule, ruleSets []option.RuleSet) err
 				return err
 			}
 		}
-		if cacheContext != nil {
-			cacheContext.Close()
+		if startContext != nil {
+			startContext.Close()
 		}
 
 		for i, rule := range newRules {
@@ -300,20 +309,18 @@ func (r *Router) UpdateRules(rules []option.Rule, ruleSets []option.RuleSet) err
 				return E.Cause(err, "initialize rule[", i, "]")
 			}
 		}
-		for _, ruleSet := range newRuleSets {
-			err := ruleSet.PostStart()
-			if err != nil {
-				return E.Cause(err, "post start rule_set[", ruleSet.Name(), "]")
-			}
-		}
 
 		oldRules := r.rules
 		oldRuleSets := r.ruleSets
+		oldUpdater := r.ruleSetUpdater
 
 		r.rules = newRules
 		r.ruleSets = newRuleSets
 		r.ruleSetMap = newRuleSetMap
-
+		r.ruleSetUpdater = R.NewRuleSetUpdater(r.ctx, r.ruleSets)
+		if r.ruleSetUpdater != nil {
+			r.ruleSetUpdater.Start()
+		}
 		r.network.Initialize(r.ruleSets)
 
 		for _, rule := range oldRules {
@@ -321,6 +328,9 @@ func (r *Router) UpdateRules(rules []option.Rule, ruleSets []option.RuleSet) err
 		}
 		for _, ruleSet := range oldRuleSets {
 			ruleSet.Close()
+		}
+		if oldUpdater != nil {
+			oldUpdater.Close()
 		}
 	} else {
 		r.rules = newRules
